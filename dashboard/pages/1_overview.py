@@ -1,82 +1,117 @@
 """
 Fleet health overview page for IndustrialSentinel dashboard.
+Shows all 100 engines at a glance with risk distribution and alerts.
 """
 import streamlit as st
 import pandas as pd
-import requests
+import numpy as np
 import os
 
 st.set_page_config(page_title="Fleet Overview", page_icon="📊", layout="wide")
 st.title("📊 Fleet Health Overview")
+st.markdown("Real-time fleet status across all monitored engines")
+st.markdown("---")
 
-API_URL = os.environ.get("API_URL", "http://localhost:8000")
+DATA_DIR = os.environ.get("DATA_DIR", "data")
 
 
 @st.cache_data(ttl=60)
 def load_predictions():
-    """Load test predictions from API or local file."""
-    try:
-        resp = requests.get(f"{API_URL}/results", timeout=10)
-        if resp.status_code == 200:
-            pass
-    except Exception:
-        pass
-
-    # Load from processed data
-    pred_path = os.environ.get("DATA_DIR", "data") + "/processed/test_predictions.csv"
+    """Load test predictions from processed data."""
+    pred_path = f"{DATA_DIR}/processed/test_predictions.csv"
     try:
         return pd.read_csv(pred_path)
     except FileNotFoundError:
-        st.error("Predictions not found. Run training first.")
+        st.error("⚠️ Predictions not found. Run training first.")
         return None
+
+
+def get_risk(rul):
+    """Classify risk level from predicted RUL."""
+    if rul < 15:
+        return "🔴 CRITICAL"
+    elif rul < 30:
+        return "🟠 HIGH"
+    elif rul < 60:
+        return "🟡 MEDIUM"
+    return "🟢 LOW"
+
+
+def get_risk_color(risk):
+    """Get background color for risk level."""
+    if "CRITICAL" in risk:
+        return "#ff4444"
+    elif "HIGH" in risk:
+        return "#ff8800"
+    elif "MEDIUM" in risk:
+        return "#ffcc00"
+    return "#44bb44"
 
 
 df = load_predictions()
 if df is not None:
-    # Add risk levels
-    def get_risk(rul):
-        if rul < 15:
-            return "CRITICAL"
-        elif rul < 30:
-            return "HIGH"
-        elif rul < 60:
-            return "MEDIUM"
-        return "LOW"
-
     df["risk_level"] = df["ensemble_pred"].apply(get_risk)
-    df["alert"] = df["risk_level"].isin(["HIGH", "CRITICAL"])
+    df["error"] = (df["ensemble_pred"] - df["true_rul"]).abs()
+    df["alert"] = df["risk_level"].apply(lambda x: "CRITICAL" in x or "HIGH" in x)
 
-    # Summary metrics
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Engines", len(df))
-    col2.metric("🔴 Critical", len(df[df["risk_level"] == "CRITICAL"]))
-    col3.metric("🟠 High Risk", len(df[df["risk_level"] == "HIGH"]))
-    col4.metric("🟢 Low Risk", len(df[df["risk_level"] == "LOW"]))
+    # KPI Cards
+    st.markdown("### Key Metrics")
+    kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+    n_critical = len(df[df["risk_level"].str.contains("CRITICAL")])
+    n_high = len(df[df["risk_level"].str.contains("HIGH")])
+    n_medium = len(df[df["risk_level"].str.contains("MEDIUM")])
+    n_low = len(df[df["risk_level"].str.contains("LOW")])
+    n_alerts = n_critical + n_high
+
+    kpi1.metric("Total Engines", len(df))
+    kpi2.metric("🔴 Critical", n_critical)
+    kpi3.metric("🟠 High Risk", n_high)
+    kpi4.metric("🟡 Medium", n_medium)
+    kpi5.metric("🟢 Low Risk", n_low)
+
+    if n_alerts > 0:
+        st.error(f"⚠️ **{n_alerts} engines require immediate attention!**")
 
     st.markdown("---")
 
-    # Risk distribution
-    st.subheader("Risk Distribution")
-    risk_counts = df["risk_level"].value_counts()
-    st.bar_chart(risk_counts)
+    # Two-column layout
+    left_col, right_col = st.columns([2, 1])
 
-    # RUL distribution
-    st.subheader("Predicted RUL Distribution")
-    st.bar_chart(df.set_index("unit")["ensemble_pred"])
+    with left_col:
+        st.markdown("### Predicted RUL Distribution")
+        chart_df = df[["unit", "ensemble_pred"]].set_index("unit").sort_values("ensemble_pred")
+        st.bar_chart(chart_df, height=300)
+
+    with right_col:
+        st.markdown("### Risk Distribution")
+        risk_counts = pd.DataFrame({
+            "Risk Level": ["Critical", "High", "Medium", "Low"],
+            "Count": [n_critical, n_high, n_medium, n_low]
+        }).set_index("Risk Level")
+        st.bar_chart(risk_counts, height=300)
+
+    st.markdown("---")
+
+    # Prediction accuracy
+    st.markdown("### Prediction Accuracy")
+    acc_col1, acc_col2, acc_col3 = st.columns(3)
+    acc_col1.metric("Mean Absolute Error", f"{df['error'].mean():.1f} cycles")
+    acc_col2.metric("Median Error", f"{df['error'].median():.1f} cycles")
+    acc_col3.metric("Max Error", f"{df['error'].max():.1f} cycles")
+
+    st.markdown("---")
 
     # Fleet table
-    st.subheader("Fleet Status Table")
-    display_df = df[["unit", "ensemble_pred", "true_rul", "risk_level", "alert"]].copy()
-    display_df.columns = ["Engine", "Predicted RUL", "True RUL", "Risk Level", "Alert"]
+    st.markdown("### Fleet Status Table")
+    filter_risk = st.multiselect(
+        "Filter by risk level",
+        ["🔴 CRITICAL", "🟠 HIGH", "🟡 MEDIUM", "🟢 LOW"],
+        default=["🔴 CRITICAL", "🟠 HIGH", "🟡 MEDIUM", "🟢 LOW"]
+    )
+
+    filtered = df[df["risk_level"].isin(filter_risk)]
+    display_df = filtered[["unit", "ensemble_pred", "true_rul", "error", "risk_level", "alert"]].copy()
+    display_df.columns = ["Engine", "Predicted RUL", "True RUL", "Error", "Risk Level", "Alert"]
     display_df = display_df.sort_values("Predicted RUL")
 
-    st.dataframe(
-        display_df.style.apply(
-            lambda row: ["background-color: #ffcccc" if row["Risk Level"] == "CRITICAL"
-                        else "background-color: #ffe0b2" if row["Risk Level"] == "HIGH"
-                        else "background-color: #fff9c4" if row["Risk Level"] == "MEDIUM"
-                        else "background-color: #c8e6c9"] * len(row),
-            axis=1
-        ),
-        use_container_width=True
-    )
+    st.dataframe(display_df, use_container_width=True, height=400)

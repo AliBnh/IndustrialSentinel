@@ -1,0 +1,34 @@
+# Version control
+.git
+.gitignore
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.coverage
+htmlcov
+
+# Virtual environments
+.venv
+venv
+
+# IDE
+.vscode
+.idea
+
+# Large data not needed in build context
+CMaps-data/
+models/
+data/processed/
+mlruns/
+logs/
+
+# Docker
+docker-compose.yml
+docker-compose.override.yml
+
+# Docs
+*.md
+LICENSE

@@ -22,6 +22,13 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# Prometheus metrics
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+except ImportError:
+    logging.getLogger("api").warning("prometheus-fastapi-instrumentator not installed, /metrics disabled")
+
 # Middleware
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(

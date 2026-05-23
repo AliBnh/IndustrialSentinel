@@ -4,9 +4,19 @@
     <strong>Predictive maintenance intelligence for industrial rotating equipment</strong>
   </p>
   <p align="center">
+    <img src="https://img.shields.io/badge/python-3.11-blue.svg" alt="Python 3.11">
+    <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License">
+    <img src="https://img.shields.io/badge/docker-compose-2496ED.svg" alt="Docker Compose">
+    <img src="https://img.shields.io/badge/RMSE-14.14-brightgreen.svg" alt="RMSE 14.14">
+    <img src="https://img.shields.io/badge/NASA_Score-341-brightgreen.svg" alt="NASA Score 341">
+    <img src="https://img.shields.io/badge/tests-35_passing-brightgreen.svg" alt="Tests Passing">
+  </p>
+  <p align="center">
     <a href="#quick-start">Quick Start</a> •
     <a href="#model-performance">Performance</a> •
     <a href="#architecture">Architecture</a> •
+    <a href="#observability">Observability</a> •
+    <a href="#testing">Testing</a> •
     <a href="#api-reference">API</a> •
     <a href="#license">License</a>
   </p>
@@ -38,6 +48,8 @@ That's it. The system will:
 | **API Docs** | http://localhost:8000/docs | Interactive Swagger UI |
 | **Dashboard** | http://localhost:8501 | Fleet monitoring UI |
 | **MLflow** | http://localhost:5000 | Experiment tracking |
+| **Prometheus** | http://localhost:9090 | Metrics & alerting |
+| **Grafana** | http://localhost:3000 | Observability dashboards |
 
 ---
 
@@ -230,10 +242,10 @@ graph TB
 
     subgraph Training Pipeline
         FE --> XGB[XGBoost Regressor]
-        FE --> LSTM[LSTM Regressor]
+        FE --> LSTM_M[LSTM Regressor]
         FE --> AE[LSTM Autoencoder]
         XGB --> ENS[Ensemble Combiner]
-        LSTM --> ENS
+        LSTM_M --> ENS
         ENS --> EVAL[Evaluation]
         AE --> EVAL
         EVAL --> MLFLOW[MLflow Tracking]
@@ -242,11 +254,11 @@ graph TB
 
     subgraph Serving Layer
         ARTIFACTS --> API[FastAPI Backend]
-        API --> PREDICT[/predict]
-        API --> HEALTH[/health]
-        API --> DEMO[/demo]
-        API --> DRIFT[/drift]
-        API --> RESULTS[/results]
+        API --> PREDICT[Predict Endpoint]
+        API --> HEALTH[Health Endpoint]
+        API --> DEMO[Demo Endpoint]
+        API --> DRIFT[Drift Endpoint]
+        API --> RESULTS[Results Endpoint]
     end
 
     subgraph Presentation
@@ -262,8 +274,63 @@ graph TB
         DOCKER --> MLFLOW
         DOCKER --> API
         DOCKER --> DASH
+        DOCKER --> PROM[Prometheus]
+        DOCKER --> GRAF[Grafana]
     end
 ```
+
+---
+
+## Observability
+
+The system includes full observability via Prometheus metrics and Grafana dashboards.
+
+| Service | URL | Purpose |
+|---------|-----|---------|
+| **Prometheus** | http://localhost:9090 | Metrics collection & querying |
+| **Grafana** | http://localhost:3000 | Dashboards (admin/sentinel) |
+
+### Metrics Exposed (`/metrics`)
+- `http_requests_total` — Request count by method, endpoint, status
+- `http_request_duration_seconds` — Latency histogram (p50, p95, p99)
+- `http_requests_in_progress` — Current concurrent requests
+
+### Pre-built Grafana Dashboard
+Automatically provisioned with panels for:
+- Request rate (req/s) by endpoint
+- Response latency (p95) over time
+- Error rate percentage
+- Requests by status code distribution
+- Per-endpoint inference latency comparison
+
+---
+
+## Testing
+
+```bash
+# Run all tests
+make test
+
+# Unit tests only (no dependencies)
+make test-unit
+
+# Integration tests (requires API running)
+make test-integration
+```
+
+### Test Coverage
+| Suite | Tests | What's Covered |
+|-------|-------|----------------|
+| **Unit** | 20 | RUL calculation, NASA score, feature engineering, evaluation metrics, validators |
+| **Integration** | 15 | All API endpoints, input validation, risk classification, response envelopes |
+
+### CI/CD
+GitHub Actions runs on every push/PR:
+1. Install dependencies
+2. Run unit tests
+3. Validate Docker Compose config
+4. Build Docker images
+5. Start services and run integration tests
 
 ---
 
