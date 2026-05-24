@@ -609,7 +609,3 @@ SOFTWARE.
 - The PyTorch, XGBoost, FastAPI, and Streamlit open-source communities
 
 ---
-
-<p align="center">
-  Built with ❤️ for industrial reliability engineering
-</p>
